@@ -1,125 +1,189 @@
-import React, { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { createPatient } from '../patient/patientsSlice';
-import toast from 'react-hot-toast';
 
-const CreatePatient = () => {
-  const dispatch = useDispatch();
-  const { createStatus, createError } = useSelector((state) => state.patients);
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import API from "../../api/api";
 
-  const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-    age: "",
-    gender: "Male",
+// Fetch all patients
+export const fetchPatients = createAsyncThunk(
+  'patients/fetch',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await API.get('/api/users'); 
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data || { message: 'Failed to fetch patients' });
+    }
+  }
+);
+
+// Create a new patient
+export const createPatient = createAsyncThunk(
+  "patients/create",
+  async (formData, { rejectWithValue }) => {
+    try {
+      const response = await API.post("/api/users", formData);
+      return response.data; 
+    } catch (err) {
+      return rejectWithValue(err.response?.data || { message: "Error creating patient" });
+    }
+  }
+);
+// Fetch a single patient by ID
+export const fetchPatientById = createAsyncThunk(
+  "patients/fetchById",
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await API.get(`/api/users/${id}`);
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || "Failed to fetch patient");
+    }
+  }
+);
+
+// Add/update adherence for a patient
+export const createPatientAdherence = createAsyncThunk(
+  "patients/createAdherence",
+  async ({ id, data }, { rejectWithValue }) => {
+    try {
+      const response = await API.post(`/api/users/${id}/adherence`, data);
+      return response.data; 
+    } catch (err) {
+      return rejectWithValue(err.response?.data || { message: "Failed to update adherence" });
+    }
+  }
+);
+
+// Fetch adherence records for a patient
+export const fetchPatientAdherence = createAsyncThunk(
+  'patients/fetchAdherence',
+  async (patientId, { rejectWithValue }) => {
+    try {
+      const response = await API.get(`/api/users/${patientId}/adherence`);
+      return { patientId, adherenceRecords: response.data };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || { message: 'Failed to fetch adherence' });
+    }
+  }
+);
+
+const patientsSlice = createSlice({
+  name: "patients",
+  initialState: {
+  list: [],
+  status: "idle",
+  error: null,
+  createStatus: "idle",
+  createError: null,
+  adherenceStatus: "idle",
+  adherenceError: null,
+  currentPatient: null, // <-- for single patient
+  currentPatientStatus: "idle",
+  currentPatientError: null,
+},
+
+  reducers: {
+    resetPatients: (state) => {
+      state.list = [];
+      state.status = 'idle';
+      state.error = null;
+      state.createStatus = 'idle';
+      state.createError = null;
+      state.adherenceStatus = 'idle';
+      state.adherenceError = null;
+    },
+  clearPatient: (state) => {
+    state.currentPatient = null;
+    state.currentPatientStatus = "idle";
+    state.currentPatientError = null;
+  }
+  },
+  extraReducers: (builder) => {
+    builder
+      // fetchPatients
+      .addCase(fetchPatients.pending, (state) => {
+        state.status = "loading";
+        state.error = null;
+      })
+      .addCase(fetchPatients.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        state.list = action.payload;
+      })
+      .addCase(fetchPatients.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.payload?.message || "Failed to fetch patients";
+      })
+
+      // createPatient
+      .addCase(createPatient.pending, (state) => {
+        state.createStatus = "loading";
+        state.createError = null;
+      })
+      .addCase(createPatient.fulfilled, (state, action) => {
+        state.createStatus = "succeeded";
+        state.list.push(action.payload);
+      })
+      .addCase(createPatient.rejected, (state, action) => {
+        state.createStatus = "failed";
+        state.createError = action.payload?.message || "Error creating patient";
+      })
+
+      // createPatientAdherence
+      .addCase(createPatientAdherence.pending, (state) => {
+        state.adherenceStatus = "loading";
+        state.adherenceError = null;
+      })
+      .addCase(createPatientAdherence.fulfilled, (state, action) => {
+        state.adherenceStatus = "succeeded";
+        const updatedPatient = action.payload;
+        const index = state.list.findIndex(p => p.id === updatedPatient.id);
+        if (index !== -1) {
+          // Only update adherence-related fields
+          state.list[index] = {
+            ...state.list[index],
+            adherenceRecords: updatedPatient.adherenceRecords,
+            monthlyAdherenceRate: updatedPatient.monthlyAdherenceRate,
+            daysMissed: updatedPatient.daysMissed,
+            lastClinicVisit: updatedPatient.lastClinicVisit,
+            nextAppointment: updatedPatient.nextAppointment,
+          };
+        }
+      })
+      .addCase(createPatientAdherence.rejected, (state, action) => {
+        state.adherenceStatus = "failed";
+        state.adherenceError = action.payload?.message || "Failed to update adherence";
+      })
+
+      // fetchPatientAdherence
+      .addCase(fetchPatientAdherence.pending, (state) => {
+        state.adherenceStatus = "loading";
+        state.adherenceError = null;
+      })
+      .addCase(fetchPatientAdherence.fulfilled, (state, action) => {
+        state.adherenceStatus = "succeeded";
+        const { patientId, adherenceRecords } = action.payload;
+        const patient = state.list.find(p => p.id === patientId);
+        if (patient) {
+          patient.adherenceRecords = adherenceRecords;
+        }
+      })
+      .addCase(fetchPatientAdherence.rejected, (state, action) => {
+        state.adherenceStatus = "failed";
+        state.adherenceError = action.payload?.message || "Failed to fetch adherence";
+      })
+      .addCase(fetchPatientById.pending, (state) => {
+    state.currentPatientStatus = "loading";
+    state.currentPatientError = null;
+  })
+  .addCase(fetchPatientById.fulfilled, (state, action) => {
+    state.currentPatientStatus = "succeeded";
+    state.currentPatient = action.payload;
+  })
+  .addCase(fetchPatientById.rejected, (state, action) => {
+    state.currentPatientStatus = "failed";
+    state.currentPatientError = action.payload;
   });
+  },
+});
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    dispatch(createPatient(formData));
-  };
-
-  // handle success/error AFTER async thunk completes
-  useEffect(() => {
-    if (createStatus === "succeeded") {
-      toast.success("Patient created successfully!", {
-        style: {
-          background: "#E8F9F0",
-          color: "#1B5E20",
-          border: "1px solid #A5D6A7",
-        },
-      });
-
-      setFormData({
-        name: "",
-        phone: "",
-        age: "",
-        gender: "Male",
-      });
-    }
-
-    if (createStatus === "failed") {
-      toast.error(createError || "Error creating patient", {
-        style: {
-          background: "#FDECEC",
-          color: "#B71C1C",
-          border: "1px solid #FFCDD2",
-        },
-      });
-    }
-  }, [createStatus, createError]);
-
-  return (
-    <div className="max-w-md mx-auto p-6 bg-white shadow rounded-lg">
-      <h2 className="text-2xl font-bold mb-4">Create Patient</h2>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-
-        <div>
-          <label htmlFor="name" className="block mb-1 font-medium">Name</label>
-          <input
-            id="name"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            required
-            className="border p-2 w-full rounded"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="phone" className="block mb-1 font-medium">Phone</label>
-          <input
-            id="phone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleChange}
-            required
-            className="border p-2 w-full rounded"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="age" className="block mb-1 font-medium">Age</label>
-          <input
-            id="age"
-            name="age"
-            value={formData.age}
-            onChange={handleChange}
-            type="number"
-            className="border p-2 w-full rounded"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="gender" className="block mb-1 font-medium">Gender</label>
-          <select
-            id="gender"
-            name="gender"
-            value={formData.gender}
-            onChange={handleChange}
-            required
-            className="border p-2 w-full rounded"
-          >
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-          </select>
-        </div>
-
-        <button
-          disabled={createStatus === "loading"}
-          className="bg-teal-600 hover:bg-teal-700 text-white p-2 rounded w-full"
-        >
-          {createStatus === "loading" ? "Creating..." : "Create Patient"}
-        </button>
-
-      </form>
-    </div>
-  );
-};
-
-export default CreatePatient;
+export const { resetPatients, clearPatient } = patientsSlice.actions;
+export default patientsSlice.reducer;
