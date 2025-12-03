@@ -21,7 +21,10 @@ const CreatePatient = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     dispatch(createPatient(formData));
-  
+  };
+
+  // 🔥 FIX: React to status changes AFTER the async thunk resolves
+  useEffect(() => {
     if (createStatus === "succeeded") {
       toast.success("Patient created successfully!", {
         style: {
@@ -30,6 +33,7 @@ const CreatePatient = () => {
           border: "1px solid #A5D6A7",
         },
       });
+
       setFormData({
         name: "",
         phone: "",
@@ -39,15 +43,17 @@ const CreatePatient = () => {
     }
 
     if (createStatus === "failed") {
-      toast.error(createError?.message || "Error creating patient", {
+      toast.error(createError || "Error creating patient", {
         style: {
           background: "#FDECEC",
           color: "#B71C1C",
           border: "1px solid #FFCDD2",
         },
       });
+
       console.error(createError);
-    }};
+    }
+  }, [createStatus, createError]);
 
   return (
     <div className="max-w-md mx-auto p-6 bg-white shadow rounded-lg">
