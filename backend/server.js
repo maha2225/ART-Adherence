@@ -11,10 +11,7 @@ db.sequelize.authenticate()
   .then(() => console.log("Connected to Supabase Postgres"))
   .catch(err => console.error("DB Connection Error:", err));
 
-app.use(cors({
-  origin: ["http://localhost:5173", "https://artraker.vercel.app"],
-  credentials: true,
-}));
+app.use(cors());
 
 app.use(bodyParser.json());
 app.use(express.json());
